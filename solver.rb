@@ -1,5 +1,4 @@
 # frozen_string_literal: true
-#
 
 require 'debug'
 
@@ -30,7 +29,7 @@ class Prompt
     'X': 1.48,
     'Z': 1.39,
     'J': 1.00,
-    'Q': 1.00,
+    'Q': 1.00
   }
 
   def initialize
@@ -77,7 +76,9 @@ class Prompt
 
   # TODO: Weight words by how common they are
   def list_guesses
-    puts possibilities.map { [_1.chars.uniq.sum { |c| FREQUENCIES[c.to_sym]} , _1] }.max(10).map { "#{_2} (#{_1.round(2)})" }
+    puts possibilities.map { [_1.chars.uniq.sum do |c|
+                                FREQUENCIES[c.to_sym]
+                              end, _1] }.max(10).map { "#{_2} (#{_1.round(2)})" }
     puts ''
   end
 
@@ -117,24 +118,7 @@ class Prompt
     possibilities = @wordlist
     possibilities = reject_words_with_excluded_letters(possibilities)
     possibilities = reject_words_with_letters_in_the_wrong_place(possibilities)
-    possibilities = select_words_with_letters_in_correct_place(possibilities)
-
-    # include = @unplaced.values.flatten
-    # if include.any?
-    #   possibilities = possibilities.select { _1.match? /(#{include.join('|')})/ }
-
-    #   possibilities = possibilities.reject do |word|
-    #     @unplaced.reject { _2.empty? }.any? { |i, letters| letters.include? word[i] }
-    #   end
-    # end
-
-    # if @placed.compact.any?
-    #   possibilities = possibilities.select do |word|
-    #     @placed.compact.all? { |position, letter| word[position] == letter }
-    #   end
-    # end
-
-    possibilities
+    select_words_with_letters_in_correct_place(possibilities)
   end
 
   def reject_words_with_excluded_letters(possibilities)
@@ -152,7 +136,7 @@ class Prompt
   def select_words_with_letters_in_correct_place(possibilities)
     return possibilities if @placed.compact.none?
 
-    possibilities = possibilities.select do |word|
+    possibilities.select do |word|
       @placed.compact.all? { |position, letter| word[position] == letter }
     end
   end
