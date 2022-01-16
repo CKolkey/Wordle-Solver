@@ -61,6 +61,7 @@ class Prompt
 
   def choose_action
     clear!
+
     if @count > 0
       puts "Top Guesses:"
       puts list_guesses
@@ -125,8 +126,6 @@ class Prompt
     when 'y'
       @placed[position] = letter
     end
-
-    true
   end
 
   protected
@@ -140,7 +139,7 @@ class Prompt
     gets.chomp
   end
 
-  # Filter
+  # Filter Words
   def possibilities
     possibilities = @wordlist
     possibilities = reject_words_with_excluded_letters(possibilities)
