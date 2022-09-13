@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require 'tty-box'
+
+def clear! = puts(`clear`)
+
 class English
   def self.frequencies
     {
@@ -16,6 +20,57 @@ class English
   end
 end
 
+class View
+  def initialize(possibilities)
+    @possibilities = possibilities
+  end
+
+  def call
+    clear!
+
+    print top_guesses
+    print excluded
+    print unplaced
+    print placed
+  end
+
+  def top_guesses
+    TTY::Box.frame(
+      top: 0, left: 0, width: 27, height: 9, padding: [0, 1],
+      title: {
+        top_left: ' Top Guesses ', bottom_left: " #{@possibilities.count} Remain "
+      }
+    ) { @possibilities.top_guesses }
+  end
+
+  def excluded
+    TTY::Box.frame(
+      top: 0, left: 28, width: 72, height: 3, padding: [0, 1],
+      title: {
+        top_left: ' Excluded '
+      }
+    ) { @possibilities.print_excluded }
+  end
+
+  def unplaced
+    TTY::Box.frame(
+      top: 3, left: 28, width: 72, height: 3, padding: [0, 1],
+      title: {
+        top_left: ' Unplaced '
+      }
+    ) { @possibilities.print_unplaced }
+  end
+
+  def placed
+    TTY::Box.frame(
+      top: 6, left: 28, width: 72, height: 3, padding: [0, 1],
+      title: {
+        top_left: ' Placed '
+      }
+    ) { @possibilities.print_placed }
+  end
+end
+
 class Possibilities
   attr_reader :wordlist, :exclude, :placed, :unplaced
 
@@ -23,64 +78,49 @@ class Possibilities
     @wordlist    = language.words
     @frequencies = language.frequencies
 
-    # Letters not in the word
     @exclude  = []
-
-    # Letters in the correct place in the word
     @placed   = { 0 => nil, 1 => nil, 2 => nil, 3 => nil, 4 => nil }
-
-    # Letters in the word, but NOT in this place
     @unplaced = { 0 => [], 1 => [], 2 => [], 3 => [], 4 => [] }
   end
 
   def count = wordlist.count
 
+  def complete? = @placed.values.compact.size == 5
+
+  def update!(guess)
+    guess[:exclude].each { |letter|             exclude_letter!(letter)           }
+    guess[:include].each { |(letter, position)| include_letter!(letter, position) }
+    guess[:correct].each { |(letter, position)| place_letter!(letter, position)   }
+  end
+
   def top_guesses
     wordlist.map { |word| [word.chars.uniq.sum { @frequencies[_1.upcase.to_sym] || 0 }, word] }
             .max(10)
-            .map { " - \"#{_2}\" (Score: #{_1.round(2)})" }
-  end
-
-  def include_letter!(letter, position)
-    letter = letter.upcase
-
-    @unplaced[position].push(letter)
-    wordlist.select! { _1.chars.include?(letter) && _1[position] != letter }
+            .map { "\"#{_2}\" (Score: #{_1.round(2)})" }
+            .join("\n")
   end
 
   def exclude_letter!(letter)
-    letter = letter.upcase
-
     @exclude.push(letter)
     wordlist.reject! { _1.chars.include?(letter) }
   end
 
-  def place_letter!(letter, position)
-    letter = letter.upcase
-
-    @placed[position] = letter
-    wordlist.select! { _1[position] == letter }
+  def include_letter!(letter, position)
+    @unplaced[position].push(letter)
+    wordlist.select! { _1.chars.include?(letter) && _1[position] != letter }
   end
 
-  def excluded?
-    exclude.any?
+  def place_letter!(letter, position)
+    @placed[position] = letter
+    wordlist.select! { _1[position] == letter }
   end
 
   def print_excluded
     exclude.uniq.sort.join(', ')
   end
 
-  def unplaced?
-    unplaced.values.reject(&:empty?).any?
-  end
-
   def print_unplaced
-    # unplaced.map { "#{_1 + 1}: \"#{_2.join('", "')}\"" }.join("\n")
     unplaced.values.flatten.uniq.sort.join(', ')
-  end
-
-  def placed?
-    placed.values.compact.any?
   end
 
   def print_placed
@@ -89,71 +129,37 @@ class Possibilities
 end
 
 class Prompt
-  def initialize(language)
-    @possibilities = Possibilities.new(language)
-    @count         = 0
-  end
-
   def call
-    choose_action
+    output(*prompt)
   end
 
-  private
+  protected
 
-  def choose_action
-    clear!
-
-    if @count.positive?
-      puts 'Top Guesses:'
-      puts @possibilities.top_guesses
-      puts ''
-    end
-
-    if @possibilities.excluded?
-      puts 'Excluded:'
-      puts @possibilities.print_excluded
-      puts ''
-    end
-
-    if @possibilities.unplaced?
-      puts 'Included:'
-      puts @possibilities.print_unplaced
-      puts ''
-    end
-
-    if @possibilities.placed?
-      puts 'Placed:'
-      puts @possibilities.print_placed
-      puts ''
-    end
-
-    puts "Current Possibilities: #{@possibilities.count}\n\n"
-    enter_guess
-
-    @count += 1
-  end
-
-  def enter_guess
+  def prompt
+    puts ''
     guess = get_input('Enter Guess').chars
     puts ''
     puts '(x = Exclude, i = Include, c = Correct)'
     marks = get_input('Mark Guess').chars
 
+    [guess, marks]
+  end
+
+  def output(guess, marks)
+    output = { exclude: [], include: [], correct: [] }
     guess.zip(marks).each_with_index do |(letter, mark), position|
       case mark
       when 'x'
-        @possibilities.exclude_letter!(letter)
+        output[:exclude] << letter.upcase
       when 'i'
-        @possibilities.include_letter!(letter, position)
+        output[:include] << [letter.upcase, position]
       when 'c'
-        @possibilities.place_letter!(letter, position)
+        output[:correct] << [letter.upcase, position]
       end
     end
+
+    output
   end
-
-  protected
-
-  def clear! = puts(`clear`)
 
   def get_input(text)
     puts text
@@ -163,11 +169,21 @@ class Prompt
   end
 end
 
-prompt = Prompt.new(English)
+# PROGRAM
+
+clear!
+
+possibilities = Possibilities.new(English)
 
 loop do
-  prompt.call
-rescue Interrupt, NoMethodError
-  puts(`clear`)
+  View.new(possibilities).call
+  raise StopIteration if possibilities.complete?
+
+  guess = Prompt.new.call
+  possibilities.update!(guess)
+rescue Interrupt
+  clear!
   exit
 end
+
+puts "\nNice."
